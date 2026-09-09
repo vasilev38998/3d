@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'muravey-samodelka/*.scad'
-      - 'muravey-samodelka/details.svg'
+      - 'muravey-samodelka/v3/**'
       - '.github/workflows/build-muravey-stl.yml'
   workflow_dispatch:
 
@@ -24,20 +23,34 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openscad xvfb
 
-      - name: Build STL
-        working-directory: muravey-samodelka
+      - name: Restore vector source
+        working-directory: muravey-samodelka/v3
         run: |
-          xvfb-run -a openscad -o muravey_samodelka_badge_160mm.stl muravey_samodelka_badge_parametric.scad
-          test -s muravey_samodelka_badge_160mm.stl
+          base64 -d details_v3.svg.gz.b64 | gunzip > details_v3.svg
+          test -s details_v3.svg
 
-      - name: Commit STL
+      - name: Build clean v3 STL files
+        working-directory: muravey-samodelka/v3
+        run: |
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v3_160mm.stl -D 'part="combined"' muravey_v3.scad
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v3_silver.stl -D 'part="silver"' muravey_v3.scad
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v3_black.stl -D 'part="black"' muravey_v3.scad
+          cp ../muravey_samodelka_badge_v3_160mm.stl ../muravey_samodelka_badge_160mm.stl
+          test -s ../muravey_samodelka_badge_v3_160mm.stl
+          test -s ../muravey_samodelka_badge_v3_silver.stl
+          test -s ../muravey_samodelka_badge_v3_black.stl
+
+      - name: Commit STL files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add muravey-samodelka/muravey_samodelka_badge_160mm.stl
+          git add muravey-samodelka/muravey_samodelka_badge_160mm.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v3_160mm.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v3_silver.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v3_black.stl
           if git diff --cached --quiet; then
-            echo "STL is already up to date"
+            echo "STL files are already up to date"
             exit 0
           fi
-          git commit -m "Build Muravey Samodelka STL model"
+          git commit -m "Build clean Muravey Samodelka v3 STL models"
           git push
