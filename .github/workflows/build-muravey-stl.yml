@@ -1,0 +1,43 @@
+name: Build Muravey STL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'muravey-samodelka/*.scad'
+      - 'muravey-samodelka/details.svg'
+      - '.github/workflows/build-muravey-stl.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad xvfb
+
+      - name: Build STL
+        working-directory: muravey-samodelka
+        run: |
+          xvfb-run -a openscad -o muravey_samodelka_badge_160mm.stl muravey_samodelka_badge_parametric.scad
+          test -s muravey_samodelka_badge_160mm.stl
+
+      - name: Commit STL
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add muravey-samodelka/muravey_samodelka_badge_160mm.stl
+          if git diff --cached --quiet; then
+            echo "STL is already up to date"
+            exit 0
+          fi
+          git commit -m "Build Muravey Samodelka STL model"
+          git push
