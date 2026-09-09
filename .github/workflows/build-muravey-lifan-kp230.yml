@@ -93,21 +93,43 @@ jobs:
 
       - name: Commit generated printable files
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add muravey-lifan-kp230/muravey_lifan_kp230_combined.stl \
-                  muravey-lifan-kp230/muravey_lifan_kp230_flatbase_v2.stl \
-                  muravey-lifan-kp230/muravey_lifan_kp230_strictflat_v3.stl \
-                  muravey-lifan-kp230/muravey_lifan_kp230_black.stl \
-                  muravey-lifan-kp230/muravey_lifan_kp230_silver.stl \
-                  muravey-lifan-kp230/muravey_lifan_kp230_strictflat_layerchange_v3.3mf \
-                  muravey-lifan-kp230/muravey_lifan_kp230_flatbase_layerchange_v2.3mf \
-                  muravey-lifan-kp230/muravey_lifan_kp230_multicolor.3mf \
-                  muravey-lifan-kp230/muravey_lifan_kp230_preview.png
-          if git diff --cached --quiet; then
-            echo "Printable files are already up to date"
-            exit 0
-          fi
-          git commit -m "Build strict-flat Lifan KP230 files"
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          mkdir -p /tmp/lifan-build
+          cp muravey-lifan-kp230/muravey_lifan_kp230_combined.stl /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_flatbase_v2.stl /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_strictflat_v3.stl /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_black.stl /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_silver.stl /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_strictflat_layerchange_v3.3mf /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_flatbase_layerchange_v2.3mf /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_multicolor.3mf /tmp/lifan-build/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_preview.png /tmp/lifan-build/
+
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/lifan-build/* muravey-lifan-kp230/
+            git add muravey-lifan-kp230/muravey_lifan_kp230_combined.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_flatbase_v2.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_strictflat_v3.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_black.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_silver.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_strictflat_layerchange_v3.3mf \
+                    muravey-lifan-kp230/muravey_lifan_kp230_flatbase_layerchange_v2.3mf \
+                    muravey-lifan-kp230/muravey_lifan_kp230_multicolor.3mf \
+                    muravey-lifan-kp230/muravey_lifan_kp230_preview.png
+            if git diff --cached --quiet; then
+              echo "Printable files are already up to date"
+              exit 0
+            fi
+            git commit -m "Build strict-flat Lifan KP230 files"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Could not publish generated files after retries"
+          exit 1
