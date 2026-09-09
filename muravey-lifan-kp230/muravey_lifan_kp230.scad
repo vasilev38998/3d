@@ -1,16 +1,22 @@
 $fn=128;
 
-// Муравей / Lifan KP230 badge — TWO-VOLUME revision.
-// The printable solution is the multipart 3MF built by the workflow:
-//   BASE   : Z=0.00..2.00 mm, a completely independent solid substrate.
-//   RELIEF : Z=2.00..3.00 mm, an independent decorative volume.
-// They intentionally touch only at the plane Z=2.00 and are NOT boolean-unioned
-// in the recommended 3MF. This lets the slicer finish the base as a true full
-// top surface before it starts the relief on the next layer.
+// Муравей / Lifan KP230 — LAYERSTEP 0.20 revision.
+// This version is tuned specifically for a 0.20 mm layer height.
+// BASE:   Z = 0.00 .. 2.00 mm
+// RELIEF: Z = 2.19 .. 3.19 mm
+//
+// Why 2.19 mm: the relief does not intersect ANY slicing plane at or below
+// Z=2.00, so the base must be treated as a complete terminal surface. At a
+// 0.20 mm profile the first relief toolpath is generated on the next print
+// level (Z≈2.20) and is deposited directly onto the finished Z=2.00 surface.
+// This avoids the earlier "ghost" outlines from the gear/letters/ant in the
+// base's top-solid layers.
 
 W = 160;
 center_r = 28.5;
 base_h = 2.00;
+layer_h = 0.20;
+relief_start = 2.19;
 relief_h = 1.00;
 hole_d = 4.6;
 hole_x = 73.8;
@@ -93,27 +99,23 @@ module base_part(){
 
 module relief_part(){
     difference(){
-        translate([0,0,base_h])
+        translate([0,0,relief_start])
             linear_extrude(height=relief_h,convexity=20) silver_details2d();
-        through_holes(base_h+relief_h);
+        through_holes(relief_start+relief_h);
     }
 }
 
-// Geometry-only combined preview/legacy STL. The recommended printable file is
-// the multipart 3MF, not this boolean-union form.
-module combined_part(){
-    difference(){
-        union(){
-            linear_extrude(height=base_h,convexity=10) plaque2d();
-            translate([0,0,base_h])
-                linear_extrude(height=relief_h,convexity=20) silver_details2d();
-        }
-        through_holes(base_h+relief_h);
+module layerstep_part(){
+    // Intentionally disconnected shells in ONE object.
+    // There is no model geometry between Z=2.00 and Z=2.19.
+    union(){
+        base_part();
+        relief_part();
     }
 }
 
-part="combined"; // combined | base | black | relief | silver | preview
-if(part=="combined") combined_part();
+part="layerstep"; // layerstep | combined | base | black | relief | silver | preview
+if(part=="layerstep" || part=="combined") layerstep_part();
 else if(part=="base" || part=="black") base_part();
 else if(part=="relief" || part=="silver") relief_part();
 else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_part(); }
