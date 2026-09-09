@@ -1,23 +1,17 @@
 $fn=128;
 
-// Муравей / Lifan KP230 badge — STRICT FLAT BASE revision.
-// Goal for a 0.20 mm FDM profile:
-//   layers 1..10 (Z=0..2.00) = one completely uninterrupted substrate;
-//   layer 11 and above          = raised artwork only.
-//
-// IMPORTANT: a tiny 0.05 mm geometric separation is intentionally left
-// between the substrate top and the relief shell. It is much smaller than
-// the 0.20 mm print layer, so it does NOT create an empty printed layer.
-// It does force the slicer to recognize Z=2.00 as a real, continuous TOP
-// surface everywhere, including underneath the gear, ant and lettering.
+// Муравей / Lifan KP230 badge — TWO-VOLUME revision.
+// The printable solution is the multipart 3MF built by the workflow:
+//   BASE   : Z=0.00..2.00 mm, a completely independent solid substrate.
+//   RELIEF : Z=2.00..3.00 mm, an independent decorative volume.
+// They intentionally touch only at the plane Z=2.00 and are NOT boolean-unioned
+// in the recommended 3MF. This lets the slicer finish the base as a true full
+// top surface before it starts the relief on the next layer.
 
 W = 160;
 center_r = 28.5;
 base_h = 2.00;
-nominal_relief_h = 1.00;
-interface_gap = 0.05;
-relief_z = base_h + interface_gap;
-relief_geom_h = nominal_relief_h - interface_gap; // keeps total model top at 3.00 mm
+relief_h = 1.00;
 hole_d = 4.6;
 hole_x = 73.8;
 ring_od = 9.2;
@@ -90,37 +84,36 @@ module silver_details2d(){
 }
 module through_holes(hh){ for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d); }
 
-module black_part(){
+module base_part(){
     difference(){
         linear_extrude(height=base_h,convexity=10) plaque2d();
         through_holes(base_h);
     }
 }
-module silver_part(){
+
+module relief_part(){
     difference(){
-        translate([0,0,relief_z])
-            linear_extrude(height=relief_geom_h,convexity=20) silver_details2d();
-        through_holes(base_h+nominal_relief_h);
+        translate([0,0,base_h])
+            linear_extrude(height=relief_h,convexity=20) silver_details2d();
+        through_holes(base_h+relief_h);
     }
 }
 
-module strictflat_part(){
-    // Deliberately TWO disconnected shells inside ONE STL/3MF object:
-    // 1) substrate ends at exactly Z=2.00 and therefore gets a full top skin;
-    // 2) relief begins at Z=2.05, which still slices onto the very next
-    //    0.20 mm print layer and bonds to that top skin in real printing.
+// Geometry-only combined preview/legacy STL. The recommended printable file is
+// the multipart 3MF, not this boolean-union form.
+module combined_part(){
     difference(){
         union(){
             linear_extrude(height=base_h,convexity=10) plaque2d();
-            translate([0,0,relief_z])
-                linear_extrude(height=relief_geom_h,convexity=20) silver_details2d();
+            translate([0,0,base_h])
+                linear_extrude(height=relief_h,convexity=20) silver_details2d();
         }
-        through_holes(base_h+nominal_relief_h);
+        through_holes(base_h+relief_h);
     }
 }
 
-part="combined"; // combined | strictflat | black | silver | preview
-if(part=="combined" || part=="strictflat") strictflat_part();
-else if(part=="black") black_part();
-else if(part=="silver") silver_part();
-else if(part=="preview") { color([0.04,0.04,0.04]) black_part(); color([0.75,0.76,0.78]) silver_part(); }
+part="combined"; // combined | base | black | relief | silver | preview
+if(part=="combined") combined_part();
+else if(part=="base" || part=="black") base_part();
+else if(part=="relief" || part=="silver") relief_part();
+else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_part(); }
