@@ -29,21 +29,22 @@ jobs:
           base64 -d details_v3.svg.gz.b64 | gunzip > details_v3.svg
           test -s details_v3.svg
 
-      - name: Build flat-base v5 STL files
+      - name: Build strict-flat v6 STL files
         working-directory: muravey-samodelka/v3
         run: |
-          xvfb-run -a openscad -o ../muravey_samodelka_badge_v5_flatbase.stl -D 'part="combined"' muravey_v3.scad
-          xvfb-run -a openscad -o ../muravey_samodelka_badge_v5_black.stl -D 'part="black"' muravey_v3.scad
-          xvfb-run -a openscad -o ../muravey_samodelka_badge_v5_silver.stl -D 'part="silver"' muravey_v3.scad
-          cp ../muravey_samodelka_badge_v5_flatbase.stl ../muravey_samodelka_badge_160mm.stl
-          test -s ../muravey_samodelka_badge_v5_flatbase.stl
-          test -s ../muravey_samodelka_badge_v5_black.stl
-          test -s ../muravey_samodelka_badge_v5_silver.stl
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v6_strictflat.stl -D 'part="combined"' muravey_v3.scad
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v6_black.stl -D 'part="black"' muravey_v3.scad
+          xvfb-run -a openscad -o ../muravey_samodelka_badge_v6_silver.stl -D 'part="silver"' muravey_v3.scad
+          cp ../muravey_samodelka_badge_v6_strictflat.stl ../muravey_samodelka_badge_v5_flatbase.stl
+          cp ../muravey_samodelka_badge_v6_strictflat.stl ../muravey_samodelka_badge_160mm.stl
+          test -s ../muravey_samodelka_badge_v6_strictflat.stl
+          test -s ../muravey_samodelka_badge_v6_black.stl
+          test -s ../muravey_samodelka_badge_v6_silver.stl
 
-      - name: Build single-object v5 layer-change 3MF
+      - name: Build single-object v6 strict-flat 3MF
         run: |
           python3 - <<'PY'
-          import uuid, zipfile
+          import uuid, zipfile, shutil
           from pathlib import Path
           import xml.etree.ElementTree as ET
 
@@ -67,12 +68,13 @@ jobs:
                   raise RuntimeError(f'No triangles parsed from {path}')
               return verts,tris
 
-          path=Path('muravey-samodelka/muravey_samodelka_badge_v5_flatbase.stl')
+          root=Path('muravey-samodelka')
+          path=root/'muravey_samodelka_badge_v6_strictflat.stl'
           verts,tris=read_stl(path)
           model=ET.Element(f'{{{CORE}}}model', {'unit':'millimeter'})
           resources=ET.SubElement(model, f'{{{CORE}}}resources')
           obj=ET.SubElement(resources, f'{{{CORE}}}object', {
-              'id':'1','name':'muravey_samodelka_v5_flatbase','type':'model',f'{{{PROD}}}UUID':str(uuid.uuid4())})
+              'id':'1','name':'muravey_samodelka_v6_strictflat','type':'model',f'{{{PROD}}}UUID':str(uuid.uuid4())})
           mesh=ET.SubElement(obj, f'{{{CORE}}}mesh')
           vs=ET.SubElement(mesh, f'{{{CORE}}}vertices')
           for x,y,z in verts:
@@ -86,28 +88,31 @@ jobs:
           xml=ET.tostring(model, encoding='utf-8', xml_declaration=True)
           rels=b'''<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'''
           types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'''
-          out=Path('muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf')
+          out=root/'muravey_samodelka_badge_v6_strictflat_layerchange.3mf'
           with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
               z.writestr('[Content_Types].xml',types)
               z.writestr('_rels/.rels',rels)
               z.writestr('3D/3dmodel.model',xml)
+          shutil.copy2(out, root/'muravey_samodelka_badge_v5_flatbase_layerchange.3mf')
           if out.stat().st_size < 1000:
               raise RuntimeError('3MF output is unexpectedly small')
           PY
 
-      - name: Commit flat-base printable files
+      - name: Commit strict-flat printable files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add muravey-samodelka/muravey_samodelka_badge_160mm.stl \
                   muravey-samodelka/muravey_samodelka_badge_v5_flatbase.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v5_black.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v5_silver.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf
+                  muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf \
+                  muravey-samodelka/muravey_samodelka_badge_v6_strictflat.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v6_black.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v6_silver.stl \
+                  muravey-samodelka/muravey_samodelka_badge_v6_strictflat_layerchange.3mf
           if git diff --cached --quiet; then
             echo "Printable files are already up to date"
             exit 0
           fi
-          git commit -m "Build flat-base Muravey Samodelka v5 files"
+          git commit -m "Build strict-flat Muravey Samodelka v6 files"
           git pull --rebase origin main
           git push origin HEAD:main
