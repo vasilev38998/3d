@@ -100,19 +100,39 @@ jobs:
 
       - name: Commit strict-flat printable files
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add muravey-samodelka/muravey_samodelka_badge_160mm.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v5_flatbase.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf \
-                  muravey-samodelka/muravey_samodelka_badge_v6_strictflat.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v6_black.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v6_silver.stl \
-                  muravey-samodelka/muravey_samodelka_badge_v6_strictflat_layerchange.3mf
-          if git diff --cached --quiet; then
-            echo "Printable files are already up to date"
-            exit 0
-          fi
-          git commit -m "Build strict-flat Muravey Samodelka v6 files"
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          mkdir -p /tmp/samodelka-build
+          cp muravey-samodelka/muravey_samodelka_badge_160mm.stl /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v5_flatbase.stl /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v6_strictflat.stl /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v6_black.stl /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v6_silver.stl /tmp/samodelka-build/
+          cp muravey-samodelka/muravey_samodelka_badge_v6_strictflat_layerchange.3mf /tmp/samodelka-build/
+
+          for attempt in 1 2 3 4; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/samodelka-build/* muravey-samodelka/
+            git add muravey-samodelka/muravey_samodelka_badge_160mm.stl \
+                    muravey-samodelka/muravey_samodelka_badge_v5_flatbase.stl \
+                    muravey-samodelka/muravey_samodelka_badge_v5_flatbase_layerchange.3mf \
+                    muravey-samodelka/muravey_samodelka_badge_v6_strictflat.stl \
+                    muravey-samodelka/muravey_samodelka_badge_v6_black.stl \
+                    muravey-samodelka/muravey_samodelka_badge_v6_silver.stl \
+                    muravey-samodelka/muravey_samodelka_badge_v6_strictflat_layerchange.3mf
+            if git diff --cached --quiet; then
+              echo "Printable files are already up to date"
+              exit 0
+            fi
+            git commit -m "Build strict-flat Muravey Samodelka v6 files"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Could not publish generated files after retries"
+          exit 1
