@@ -18,10 +18,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install OpenSCAD
+      - name: Install OpenSCAD and Cyrillic font
         run: |
           sudo apt-get update
-          sudo apt-get install -y openscad xvfb
+          sudo apt-get install -y openscad xvfb fonts-dejavu-core
 
       - name: Restore vector source
         working-directory: muravey-samodelka/v3
