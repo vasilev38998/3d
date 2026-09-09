@@ -2,17 +2,21 @@ $fn=128;
 W=160.00000;
 H=38.50394;
 base_h=2.00;
-relief_h=1.00;
+nominal_relief_h=1.00;
+interface_gap=0.05;
+relief_z=base_h+interface_gap;
+relief_geom_h=nominal_relief_h-interface_gap;
 hole_d=4.20;
 hole_x=74.35;
 ring_outer_d=9.20;
 frame_w=1.75;
 detail_print_boost=0.20;
 
-// FLAT BASE revision:
-// Z=0..2.00 mm is one uninterrupted substrate.
-// The frame, rings, ant and lettering start exactly at Z=2.00 mm.
-// Nothing decorative is recessed into the substrate.
+// STRICT FLAT BASE revision.
+// Layers up to Z=2.00 are a completely uninterrupted substrate.
+// A deliberate 0.05 mm geometric separation (smaller than a 0.20 mm print
+// layer) makes Z=2.00 a true full TOP surface in the slicer. The raised shell
+// begins at Z=2.05 and is still printed on the immediately following layer.
 
 module outline2d() {
   translate([-W/2,H/2]) scale([1,-1]) import("outline_v3.svg", convexity=20);
@@ -46,25 +50,26 @@ module black_part() {
 }
 module silver_part() {
   difference() {
-    translate([0,0,base_h])
-      linear_extrude(height=relief_h, convexity=20) silver_details2d();
-    holes3d(base_h+relief_h);
+    translate([0,0,relief_z])
+      linear_extrude(height=relief_geom_h, convexity=20) silver_details2d();
+    holes3d(base_h+nominal_relief_h);
   }
 }
-module combined() {
+module strictflat() {
+  // Two disconnected shells inside one model file. This is intentional:
+  // the substrate top at Z=2.00 must remain an external surface everywhere
+  // so the slicer prints a full uninterrupted top skin before the relief.
   difference() {
     union() {
-      // Completely flat, uninterrupted substrate.
       linear_extrude(height=base_h, convexity=10) outline2d();
-      // Raised details begin only on the finished top plane.
-      translate([0,0,base_h])
-        linear_extrude(height=relief_h, convexity=20) silver_details2d();
+      translate([0,0,relief_z])
+        linear_extrude(height=relief_geom_h, convexity=20) silver_details2d();
     }
-    holes3d(base_h+relief_h);
+    holes3d(base_h+nominal_relief_h);
   }
 }
 
-part="combined"; // combined | silver | black
-if(part=="combined") combined();
+part="combined"; // combined | strictflat | silver | black
+if(part=="combined" || part=="strictflat") strictflat();
 else if(part=="silver") silver_part();
 else if(part=="black") black_part();
