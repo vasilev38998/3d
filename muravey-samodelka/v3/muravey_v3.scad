@@ -15,7 +15,11 @@ module outline2d() {
 module panel2d() { offset(delta=-1.75) outline2d(); }
 module frame2d() { difference() { outline2d(); offset(delta=-1.75) outline2d(); } }
 module details2d() {
-  translate([-W/2,H/2]) scale([1,-1]) import("details_v3.svg", convexity=20);
+  // SVG coordinates come from the image extraction. Flip Y for OpenSCAD,
+  // then mirror X around the badge center so the ant stays on the LEFT
+  // and the Cyrillic text reads normally from left to right.
+  mirror([1,0,0])
+    translate([-W/2,H/2]) scale([1,-1]) import("details_v3.svg", convexity=20);
 }
 module ring2d() { for(x=[-hole_x,hole_x]) translate([x,0]) difference(){circle(d=ring_outer_d);circle(d=hole_d+1.20);} }
 module holes3d(hh) { for(x=[-hole_x,hole_x]) translate([x,0,-0.1]) cylinder(h=hh+0.2,d=hole_d); }
