@@ -29,6 +29,23 @@ jobs:
           base64 -d details_v3.svg.gz.b64 | gunzip > details_v3.svg
           test -s details_v3.svg
 
+      - name: Diagnose traced artwork bounds
+        working-directory: muravey-samodelka/v3
+        run: |
+          python3 - <<'PY'
+          import re, xml.etree.ElementTree as ET
+          root=ET.parse('details_v3.svg').getroot()
+          paths=[e for e in root.iter() if e.tag.endswith('path')]
+          print('PATH_BOUNDS_BEGIN')
+          for i,p in enumerate(paths):
+              nums=[float(x) for x in re.findall(r'[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?', p.get('d',''))]
+              pts=list(zip(nums[0::2], nums[1::2]))
+              if not pts: continue
+              xs=[q[0] for q in pts]; ys=[q[1] for q in pts]
+              print(f'{i:03d} x={min(xs):7.3f}..{max(xs):7.3f} y={min(ys):7.3f}..{max(ys):7.3f} w={max(xs)-min(xs):6.3f} h={max(ys)-min(ys):6.3f}')
+          print('PATH_BOUNDS_END')
+          PY
+
       - name: Build clean v3 STL files
         working-directory: muravey-samodelka/v3
         run: |
@@ -46,61 +63,37 @@ jobs:
           import uuid, zipfile
           from pathlib import Path
           import xml.etree.ElementTree as ET
-
           CORE='http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
           PROD='http://schemas.microsoft.com/3dmanufacturing/production/2015/06'
-          ET.register_namespace('', CORE)
-          ET.register_namespace('p', PROD)
-
+          ET.register_namespace('', CORE); ET.register_namespace('p', PROD)
           def read_stl(path):
               verts=[]; idx={}; tris=[]; tri=[]
               for line in Path(path).read_text(errors='ignore').splitlines():
                   s=line.strip()
                   if s.startswith('vertex '):
                       xyz=tuple(float(x) for x in s.split()[1:4])
-                      if xyz not in idx:
-                          idx[xyz]=len(verts); verts.append(xyz)
+                      if xyz not in idx: idx[xyz]=len(verts); verts.append(xyz)
                       tri.append(idx[xyz])
-                      if len(tri)==3:
-                          tris.append(tuple(tri)); tri=[]
-              if not tris:
-                  raise RuntimeError(f'No triangles parsed from {path}')
+                      if len(tri)==3: tris.append(tuple(tri)); tri=[]
+              if not tris: raise RuntimeError(f'No triangles parsed from {path}')
               return verts,tris
-
           def add_object(resources, oid, name, path):
               verts,tris=read_stl(path)
-              obj=ET.SubElement(resources, f'{{{CORE}}}object', {
-                  'id':str(oid),'name':name,'type':'model',f'{{{PROD}}}UUID':str(uuid.uuid4())})
-              mesh=ET.SubElement(obj, f'{{{CORE}}}mesh')
-              vs=ET.SubElement(mesh, f'{{{CORE}}}vertices')
-              for x,y,z in verts:
-                  ET.SubElement(vs, f'{{{CORE}}}vertex', {'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
+              obj=ET.SubElement(resources, f'{{{CORE}}}object', {'id':str(oid),'name':name,'type':'model',f'{{{PROD}}}UUID':str(uuid.uuid4())})
+              mesh=ET.SubElement(obj, f'{{{CORE}}}mesh'); vs=ET.SubElement(mesh, f'{{{CORE}}}vertices')
+              for x,y,z in verts: ET.SubElement(vs, f'{{{CORE}}}vertex', {'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
               ts=ET.SubElement(mesh, f'{{{CORE}}}triangles')
-              for a,b,c in tris:
-                  ET.SubElement(ts, f'{{{CORE}}}triangle', {'v1':str(a),'v2':str(b),'v3':str(c)})
-
-          model=ET.Element(f'{{{CORE}}}model', {'unit':'millimeter'})
-          resources=ET.SubElement(model, f'{{{CORE}}}resources')
-          add_object(resources,1,'silver','muravey-samodelka/muravey_samodelka_badge_v3_silver.stl')
-          add_object(resources,2,'black','muravey-samodelka/muravey_samodelka_badge_v3_black.stl')
+              for a,b,c in tris: ET.SubElement(ts, f'{{{CORE}}}triangle', {'v1':str(a),'v2':str(b),'v3':str(c)})
+          model=ET.Element(f'{{{CORE}}}model', {'unit':'millimeter'}); resources=ET.SubElement(model, f'{{{CORE}}}resources')
+          add_object(resources,1,'silver','muravey-samodelka/muravey_samodelka_badge_v3_silver.stl'); add_object(resources,2,'black','muravey-samodelka/muravey_samodelka_badge_v3_black.stl')
           build=ET.SubElement(model, f'{{{CORE}}}build', {f'{{{PROD}}}UUID':str(uuid.uuid4())})
-          for oid,name in [(1,'silver'),(2,'black')]:
-              ET.SubElement(build, f'{{{CORE}}}item', {
-                  'objectid':str(oid),
-                  'transform':'1 0 0 0 1 0 0 0 1 0 0 0',
-                  f'{{{PROD}}}UUID':str(uuid.uuid4()),
-                  'partnumber':name})
-
+          for oid,name in [(1,'silver'),(2,'black')]: ET.SubElement(build, f'{{{CORE}}}item', {'objectid':str(oid),'transform':'1 0 0 0 1 0 0 0 1 0 0 0',f'{{{PROD}}}UUID':str(uuid.uuid4()),'partnumber':name})
           xml=ET.tostring(model, encoding='utf-8', xml_declaration=True)
           rels=b'''<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'''
           types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'''
           out='muravey-samodelka/muravey_samodelka_badge_v3_multicolor.3mf'
-          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
-              z.writestr('[Content_Types].xml',types)
-              z.writestr('_rels/.rels',rels)
-              z.writestr('3D/3dmodel.model',xml)
-          if Path(out).stat().st_size < 1000:
-              raise RuntimeError('3MF output is unexpectedly small')
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z: z.writestr('[Content_Types].xml',types); z.writestr('_rels/.rels',rels); z.writestr('3D/3dmodel.model',xml)
+          if Path(out).stat().st_size < 1000: raise RuntimeError('3MF output is unexpectedly small')
           print(out)
           PY
 
@@ -113,9 +106,6 @@ jobs:
                   muravey-samodelka/muravey_samodelka_badge_v3_silver.stl \
                   muravey-samodelka/muravey_samodelka_badge_v3_black.stl \
                   muravey-samodelka/muravey_samodelka_badge_v3_multicolor.3mf
-          if git diff --cached --quiet; then
-            echo "Printable files are already up to date"
-            exit 0
-          fi
+          if git diff --cached --quiet; then echo "Printable files are already up to date"; exit 0; fi
           git commit -m "Build clean Muravey Samodelka v3 printable files"
           git push
