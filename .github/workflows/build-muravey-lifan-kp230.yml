@@ -1,0 +1,113 @@
+name: Build Muravey Lifan KP230 Badge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'muravey-lifan-kp230/muravey_lifan_kp230.scad'
+      - '.github/workflows/build-muravey-lifan-kp230.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OpenSCAD and font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad xvfb fonts-dejavu-core
+
+      - name: Build STL files and preview
+        working-directory: muravey-lifan-kp230
+        run: |
+          openscad -o muravey_lifan_kp230_combined.stl -D 'part="combined"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_black.stl -D 'part="black"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_silver.stl -D 'part="silver"' muravey_lifan_kp230.scad
+          xvfb-run -a openscad -o muravey_lifan_kp230_preview.png --imgsize=1800,700 --projection=ortho --camera=0,0,0,0,0,0,190 -D 'part="preview"' muravey_lifan_kp230.scad
+          test -s muravey_lifan_kp230_combined.stl
+          test -s muravey_lifan_kp230_black.stl
+          test -s muravey_lifan_kp230_silver.stl
+
+      - name: Build two-part 3MF
+        run: |
+          python3 - <<'PY'
+          import uuid, zipfile
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          CORE='http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
+          PROD='http://schemas.microsoft.com/3dmanufacturing/production/2015/06'
+          ET.register_namespace('', CORE)
+          ET.register_namespace('p', PROD)
+
+          def read_stl(path):
+              verts=[]; index={}; tris=[]; tri=[]
+              for line in Path(path).read_text(errors='ignore').splitlines():
+                  s=line.strip()
+                  if s.startswith('vertex '):
+                      xyz=tuple(float(x) for x in s.split()[1:4])
+                      if xyz not in index:
+                          index[xyz]=len(verts); verts.append(xyz)
+                      tri.append(index[xyz])
+                      if len(tri)==3:
+                          tris.append(tuple(tri)); tri=[]
+              if not tris:
+                  raise RuntimeError(f'No triangles parsed from {path}')
+              return verts,tris
+
+          def add_object(resources, oid, name, path):
+              verts,tris=read_stl(path)
+              obj=ET.SubElement(resources, f'{{{CORE}}}object', {
+                  'id':str(oid),'name':name,'type':'model',f'{{{PROD}}}UUID':str(uuid.uuid4())})
+              mesh=ET.SubElement(obj, f'{{{CORE}}}mesh')
+              vs=ET.SubElement(mesh, f'{{{CORE}}}vertices')
+              for x,y,z in verts:
+                  ET.SubElement(vs, f'{{{CORE}}}vertex', {'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
+              ts=ET.SubElement(mesh, f'{{{CORE}}}triangles')
+              for a,b,c in tris:
+                  ET.SubElement(ts, f'{{{CORE}}}triangle', {'v1':str(a),'v2':str(b),'v3':str(c)})
+
+          root=Path('muravey-lifan-kp230')
+          model=ET.Element(f'{{{CORE}}}model', {'unit':'millimeter'})
+          resources=ET.SubElement(model, f'{{{CORE}}}resources')
+          add_object(resources,1,'black',root/'muravey_lifan_kp230_black.stl')
+          add_object(resources,2,'silver',root/'muravey_lifan_kp230_silver.stl')
+          build=ET.SubElement(model, f'{{{CORE}}}build', {f'{{{PROD}}}UUID':str(uuid.uuid4())})
+          for oid,name in [(1,'black'),(2,'silver')]:
+              ET.SubElement(build, f'{{{CORE}}}item', {
+                  'objectid':str(oid), 'transform':'1 0 0 0 1 0 0 0 1 0 0 0',
+                  f'{{{PROD}}}UUID':str(uuid.uuid4()), 'partnumber':name})
+
+          xml=ET.tostring(model, encoding='utf-8', xml_declaration=True)
+          rels=b'''<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'''
+          types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'''
+          out=root/'muravey_lifan_kp230_multicolor.3mf'
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              z.writestr('[Content_Types].xml',types)
+              z.writestr('_rels/.rels',rels)
+              z.writestr('3D/3dmodel.model',xml)
+          if out.stat().st_size < 1000:
+              raise RuntimeError('3MF output is unexpectedly small')
+          PY
+
+      - name: Commit generated printable files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add muravey-lifan-kp230/muravey_lifan_kp230_combined.stl \
+                  muravey-lifan-kp230/muravey_lifan_kp230_black.stl \
+                  muravey-lifan-kp230/muravey_lifan_kp230_silver.stl \
+                  muravey-lifan-kp230/muravey_lifan_kp230_multicolor.3mf \
+                  muravey-lifan-kp230/muravey_lifan_kp230_preview.png
+          if git diff --cached --quiet; then
+            echo "Printable files are already up to date"
+            exit 0
+          fi
+          git commit -m "Build Muravey Lifan KP230 printable files"
+          git push
