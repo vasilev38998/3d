@@ -1,14 +1,23 @@
 $fn=128;
 
-// Муравей / Lifan KP230 badge — FLAT BASE revision.
-// The substrate is a completely uninterrupted solid from Z=0 to Z=2.00 mm.
-// ALL decorative geometry starts exactly at Z=2.00 mm; nothing intrudes into
-// or is subtracted from the substrate except the two mounting holes.
+// Муравей / Lifan KP230 badge — STRICT FLAT BASE revision.
+// Goal for a 0.20 mm FDM profile:
+//   layers 1..10 (Z=0..2.00) = one completely uninterrupted substrate;
+//   layer 11 and above          = raised artwork only.
+//
+// IMPORTANT: a tiny 0.05 mm geometric separation is intentionally left
+// between the substrate top and the relief shell. It is much smaller than
+// the 0.20 mm print layer, so it does NOT create an empty printed layer.
+// It does force the slicer to recognize Z=2.00 as a real, continuous TOP
+// surface everywhere, including underneath the gear, ant and lettering.
 
 W = 160;
 center_r = 28.5;
 base_h = 2.00;
-relief_h = 1.00;
+nominal_relief_h = 1.00;
+interface_gap = 0.05;
+relief_z = base_h + interface_gap;
+relief_geom_h = nominal_relief_h - interface_gap; // keeps total model top at 3.00 mm
 hole_d = 4.6;
 hole_x = 73.8;
 ring_od = 9.2;
@@ -82,29 +91,36 @@ module silver_details2d(){
 module through_holes(hh){ for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d); }
 
 module black_part(){
-    difference(){ linear_extrude(height=base_h,convexity=10) plaque2d(); through_holes(base_h); }
+    difference(){
+        linear_extrude(height=base_h,convexity=10) plaque2d();
+        through_holes(base_h);
+    }
 }
 module silver_part(){
     difference(){
-        // Starts exactly on the finished flat top of the substrate.
-        translate([0,0,base_h]) linear_extrude(height=relief_h,convexity=20) silver_details2d();
-        through_holes(base_h+relief_h);
-    }
-}
-module combined_part(){
-    difference(){
-        union(){
-            // Full uninterrupted substrate.
-            linear_extrude(height=base_h,convexity=10) plaque2d();
-            // Relief begins only AFTER the full 2.00 mm substrate.
-            translate([0,0,base_h]) linear_extrude(height=relief_h,convexity=20) silver_details2d();
-        }
-        through_holes(base_h+relief_h);
+        translate([0,0,relief_z])
+            linear_extrude(height=relief_geom_h,convexity=20) silver_details2d();
+        through_holes(base_h+nominal_relief_h);
     }
 }
 
-part="combined"; // combined | black | silver | preview
-if(part=="combined") combined_part();
+module strictflat_part(){
+    // Deliberately TWO disconnected shells inside ONE STL/3MF object:
+    // 1) substrate ends at exactly Z=2.00 and therefore gets a full top skin;
+    // 2) relief begins at Z=2.05, which still slices onto the very next
+    //    0.20 mm print layer and bonds to that top skin in real printing.
+    difference(){
+        union(){
+            linear_extrude(height=base_h,convexity=10) plaque2d();
+            translate([0,0,relief_z])
+                linear_extrude(height=relief_geom_h,convexity=20) silver_details2d();
+        }
+        through_holes(base_h+nominal_relief_h);
+    }
+}
+
+part="combined"; // combined | strictflat | black | silver | preview
+if(part=="combined" || part=="strictflat") strictflat_part();
 else if(part=="black") black_part();
 else if(part=="silver") silver_part();
 else if(part=="preview") { color([0.04,0.04,0.04]) black_part(); color([0.75,0.76,0.78]) silver_part(); }
