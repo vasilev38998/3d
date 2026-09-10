@@ -23,16 +23,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openscad xvfb fonts-dejavu-core
 
-      - name: Build independent base and relief
+      - name: Build v8 geometry
         working-directory: muravey-lifan-kp230
         run: |
-          openscad -o muravey_lifan_kp230_BASE_v7.stl -D 'part="base"' muravey_lifan_kp230.scad
-          openscad -o muravey_lifan_kp230_RELIEF_v7.stl -D 'part="relief"' muravey_lifan_kp230.scad
-          xvfb-run -a openscad -o muravey_lifan_kp230_v7_preview.png --imgsize=1800,700 --projection=ortho --camera=0,0,0,0,0,0,190 -D 'part="preview"' muravey_lifan_kp230.scad
-          test -s muravey_lifan_kp230_BASE_v7.stl
-          test -s muravey_lifan_kp230_RELIEF_v7.stl
+          openscad -o muravey_lifan_kp230_BASE_v8.stl -D 'part="base"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_OUTLINE_v8.stl -D 'part="outline"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_RELIEFMAIN_v8.stl -D 'part="reliefmain"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_RELIEF_v8.stl -D 'part="relief"' muravey_lifan_kp230.scad
+          xvfb-run -a openscad -o muravey_lifan_kp230_v8_preview.png --imgsize=1800,700 --projection=ortho --camera=0,0,0,0,0,0,190 -D 'part="preview"' muravey_lifan_kp230.scad
+          test -s muravey_lifan_kp230_BASE_v8.stl
+          test -s muravey_lifan_kp230_OUTLINE_v8.stl
+          test -s muravey_lifan_kp230_RELIEFMAIN_v8.stl
+          test -s muravey_lifan_kp230_RELIEF_v8.stl
 
-      - name: Validate contact plane
+      - name: Validate exact Z ranges
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -44,14 +48,18 @@ jobs:
               if not zs: raise RuntimeError(path)
               return min(zs),max(zs)
           root=Path('muravey-lifan-kp230')
-          b=zr(root/'muravey_lifan_kp230_BASE_v7.stl')
-          r=zr(root/'muravey_lifan_kp230_RELIEF_v7.stl')
-          print('BASE',b,'RELIEF',r)
+          b=zr(root/'muravey_lifan_kp230_BASE_v8.stl')
+          o=zr(root/'muravey_lifan_kp230_OUTLINE_v8.stl')
+          m=zr(root/'muravey_lifan_kp230_RELIEFMAIN_v8.stl')
+          r=zr(root/'muravey_lifan_kp230_RELIEF_v8.stl')
+          print('BASE',b,'OUTLINE',o,'MAIN',m,'RELIEF',r)
           assert abs(b[0]-0.0)<1e-6 and abs(b[1]-2.0)<1e-6
+          assert abs(o[0]-2.0)<1e-6 and abs(o[1]-2.1)<1e-6
+          assert abs(m[0]-2.1)<1e-6 and abs(m[1]-3.0)<1e-6
           assert abs(r[0]-2.0)<1e-6 and abs(r[1]-3.0)<1e-6
           PY
 
-      - name: Build v7 3MF with two independent top-level objects
+      - name: Build Bambu-aware composite 3MF v8
         run: |
           python3 - <<'PY'
           import zipfile
@@ -76,16 +84,18 @@ jobs:
               return verts,tris
 
           root=Path('muravey-lifan-kp230')
+          base_v,base_t=read_stl(root/'muravey_lifan_kp230_BASE_v8.stl')
+          rel_v,rel_t=read_stl(root/'muravey_lifan_kp230_RELIEF_v8.stl')
+
           model=ET.Element(f'{{{CORE}}}model',{'unit':'millimeter','xml:lang':'ru-RU'})
-          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Title'}).text='Muravey Lifan KP230 — independent objects v7'
-          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Description'}).text='BASE and RELIEF are separate top-level build items. Do not merge them in Bambu Studio.'
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Title'}).text='Muravey Lifan KP230 OUTLINE FIX v8'
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Description'}).text='Base 0-2mm; relief has 0.38mm perimeter outline from 2.0-2.1mm and full geometry from 2.1-3.0mm. Use 0.20mm fixed layers and Classic wall generator.'
           resources=ET.SubElement(model,f'{{{CORE}}}resources')
           mats=ET.SubElement(resources,f'{{{CORE}}}basematerials',{'id':'10'})
           ET.SubElement(mats,f'{{{CORE}}}base',{'name':'BASE_BLACK','displaycolor':'#181818FF'})
           ET.SubElement(mats,f'{{{CORE}}}base',{'name':'RELIEF_SILVER','displaycolor':'#C8C8C8FF'})
 
-          def add_obj(oid,name,path,pindex):
-              verts,tris=read_stl(path)
+          def add_obj(oid,name,verts,tris,pindex):
               obj=ET.SubElement(resources,f'{{{CORE}}}object',{'id':str(oid),'name':name,'type':'model','pid':'10','pindex':str(pindex)})
               mesh=ET.SubElement(obj,f'{{{CORE}}}mesh')
               vs=ET.SubElement(mesh,f'{{{CORE}}}vertices')
@@ -95,45 +105,90 @@ jobs:
               for a,b,c in tris:
                   ET.SubElement(ts,f'{{{CORE}}}triangle',{'v1':str(a),'v2':str(b),'v3':str(c)})
 
-          add_obj(1,'BASE_FINISHED_AT_2MM',root/'muravey_lifan_kp230_BASE_v7.stl',0)
-          add_obj(2,'RELIEF_STARTS_AT_2MM',root/'muravey_lifan_kp230_RELIEF_v7.stl',1)
-
-          # Critical: TWO direct build items. No parent assembly, no components.
+          add_obj(1,'BASE',base_v,base_t,0)
+          add_obj(2,'RELIEF_OUTLINE_FIX',rel_v,rel_t,1)
+          parent=ET.SubElement(resources,f'{{{CORE}}}object',{'id':'3','name':'LIFAN_KP230_OUTLINEFIX_V8','type':'model'})
+          comps=ET.SubElement(parent,f'{{{CORE}}}components')
+          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'1'})
+          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'2'})
           build=ET.SubElement(model,f'{{{CORE}}}build')
-          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'1'})
-          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'2'})
+          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'3'})
 
-          xml=ET.tostring(model,encoding='utf-8',xml_declaration=True)
+          model_xml=ET.tostring(model,encoding='utf-8',xml_declaration=True)
+          model_settings='''<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="3">
+    <metadata key="name" value="LIFAN_KP230_OUTLINEFIX_V8"/>
+    <metadata key="extruder" value="1"/>
+    <part id="1" subtype="normal_part">
+      <metadata key="name" value="BASE_BLACK"/>
+      <metadata key="extruder" value="1"/>
+      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
+    </part>
+    <part id="2" subtype="normal_part">
+      <metadata key="name" value="RELIEF_SILVER"/>
+      <metadata key="extruder" value="2"/>
+      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
+    </part>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value="Lifan KP230 v8"/>
+    <metadata key="locked" value="false"/>
+    <metadata key="filament_map_mode" value="Auto For Flush"/>
+    <metadata key="filament_maps" value="1 2"/>
+    <metadata key="filament_volume_maps" value="1 1"/>
+  </plate>
+</config>
+'''.encode('utf-8')
+          project_settings=b'''{
+  "layer_height": "0.20",
+  "initial_layer_print_height": "0.20",
+  "wall_generator": "classic",
+  "filament_colour": ["#181818", "#C8C8C8"],
+  "filament_multi_colour": ["#181818", "#C8C8C8"],
+  "filament_type": ["PLA", "PLA"],
+  "filament_vendor": ["Generic", "Generic"],
+  "filament_settings_id": ["Generic PLA", "Generic PLA"],
+  "filament_diameter": ["1.75", "1.75"],
+  "single_extruder_multi_material": "1"
+}'''
           rels=b'''<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'''
-          types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'''
-          out=root/'muravey_lifan_kp230_INDEPENDENT_OBJECTS_v7.3mf'
+          types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="config" ContentType="application/octet-stream"/></Types>'''
+          out=root/'muravey_lifan_kp230_OUTLINEFIX020_v8.3mf'
           with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
               z.writestr('[Content_Types].xml',types)
               z.writestr('_rels/.rels',rels)
-              z.writestr('3D/3dmodel.model',xml)
+              z.writestr('3D/3dmodel.model',model_xml)
+              z.writestr('Metadata/model_settings.config',model_settings)
+              z.writestr('Metadata/project_settings.config',project_settings)
           if out.stat().st_size<1000: raise RuntimeError('3MF too small')
           PY
 
-      - name: Commit v7 files
+      - name: Commit v8 files
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p /tmp/lifan-v7
-          cp muravey-lifan-kp230/muravey_lifan_kp230_BASE_v7.stl /tmp/lifan-v7/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v7.stl /tmp/lifan-v7/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_INDEPENDENT_OBJECTS_v7.3mf /tmp/lifan-v7/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_v7_preview.png /tmp/lifan-v7/
+          mkdir -p /tmp/lifan-v8
+          cp muravey-lifan-kp230/muravey_lifan_kp230_BASE_v8.stl /tmp/lifan-v8/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_OUTLINE_v8.stl /tmp/lifan-v8/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_RELIEFMAIN_v8.stl /tmp/lifan-v8/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v8.stl /tmp/lifan-v8/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_OUTLINEFIX020_v8.3mf /tmp/lifan-v8/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_v8_preview.png /tmp/lifan-v8/
           for attempt in 1 2 3 4; do
             git fetch origin main
             git reset --hard origin/main
-            cp /tmp/lifan-v7/* muravey-lifan-kp230/
-            git add muravey-lifan-kp230/muravey_lifan_kp230_BASE_v7.stl \
-                    muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v7.stl \
-                    muravey-lifan-kp230/muravey_lifan_kp230_INDEPENDENT_OBJECTS_v7.3mf \
-                    muravey-lifan-kp230/muravey_lifan_kp230_v7_preview.png
+            cp /tmp/lifan-v8/* muravey-lifan-kp230/
+            git add muravey-lifan-kp230/muravey_lifan_kp230_BASE_v8.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_OUTLINE_v8.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_RELIEFMAIN_v8.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v8.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_OUTLINEFIX020_v8.3mf \
+                    muravey-lifan-kp230/muravey_lifan_kp230_v8_preview.png
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m "Build Lifan KP230 independent-object v7"
+            git commit -m "Build Lifan KP230 outline-fix v8"
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
