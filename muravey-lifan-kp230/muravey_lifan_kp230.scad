@@ -1,23 +1,25 @@
 $fn=128;
 
-// Муравей / Lifan KP230 — LAYERSTEP 0.20 revision.
-// This version is tuned specifically for a 0.20 mm layer height.
-// BASE:   Z = 0.00 .. 2.00 mm
-// RELIEF: Z = 2.19 .. 3.19 mm
+// Муравей / Lifan KP230 — SURFACEFIX 0.20 v6
+// Workaround for Bambu Studio raised-detail top-surface artifacts.
 //
-// Why 2.19 mm: the relief does not intersect ANY slicing plane at or below
-// Z=2.00, so the base must be treated as a complete terminal surface. At a
-// 0.20 mm profile the first relief toolpath is generated on the next print
-// level (Z≈2.20) and is deposited directly onto the finished Z=2.00 surface.
-// This avoids the earlier "ghost" outlines from the gear/letters/ant in the
-// base's top-solid layers.
+// BASE: full independent solid Z=0.00..2.00 mm.
+// RELIEF component:
+//   hidden inset support core Z=2.00..2.10 mm (half of a 0.20 mm layer)
+//   full visible relief          Z=2.10..3.00 mm
+//
+// The support core is inset from every decorative edge by ~one extrusion
+// line. It gives the first visible relief layer something to bond to while
+// keeping the base top recognized as a continuous top surface by the slicer.
 
 W = 160;
 center_r = 28.5;
 base_h = 2.00;
 layer_h = 0.20;
-relief_start = 2.19;
-relief_h = 1.00;
+support_h = 0.10;
+support_inset = 0.35;
+relief_main_z = base_h + support_h;
+relief_main_h = 0.90;
 hole_d = 4.6;
 hole_x = 73.8;
 ring_od = 9.2;
@@ -28,13 +30,13 @@ font_right = "DejaVu Sans Condensed:style=Bold Oblique";
 
 module wing_left_raw() {
     polygon(points=[
-        [-80.0, 0.0],[-73.2,16.8],[-31.0,16.8],[-26.0,20.6],[-22.0,20.6],
+        [-80.0,0.0],[-73.2,16.8],[-31.0,16.8],[-26.0,20.6],[-22.0,20.6],
         [-22.0,-20.6],[-26.0,-20.6],[-31.0,-16.8],[-73.2,-16.8]
     ]);
 }
-module plaque_raw2d() { union(){ circle(r=center_r); wing_left_raw(); mirror([1,0,0]) wing_left_raw(); } }
-module plaque2d() { offset(r=0.9) offset(delta=-0.9) plaque_raw2d(); }
-module frame2d() { difference(){ plaque2d(); offset(delta=-frame_w) plaque2d(); } }
+module plaque_raw2d(){ union(){ circle(r=center_r); wing_left_raw(); mirror([1,0,0]) wing_left_raw(); } }
+module plaque2d(){ offset(r=0.9) offset(delta=-0.9) plaque_raw2d(); }
+module frame2d(){ difference(){ plaque2d(); offset(delta=-frame_w) plaque2d(); } }
 
 module capsule(p1,p2,d=1.4){ hull(){ translate(p1) circle(d=d); translate(p2) circle(d=d); } }
 module polyline(points,d=1.4){ for(i=[0:len(points)-2]) capsule(points[i],points[i+1],d); }
@@ -85,9 +87,15 @@ module right_text2d(){
 module hole_rings2d(){
     for(x=[-hole_x,hole_x]) translate([x,0]) difference(){ circle(d=ring_od); circle(d=hole_d+1.10); }
 }
-module silver_details2d(){
+module details2d(){
     union(){ frame2d(); gear2d(); ant2d(); stripe_pair(-1); stripe_pair(1); left_text2d(); right_text2d(); hole_rings2d(); }
 }
+
+// Hidden footprint under the visible relief. Thin details may disappear after
+// this inward offset; that is intentional. The remaining core is only a bond
+// aid and is entirely concealed by the full detail above it.
+module support_core2d(){ offset(delta=-support_inset) details2d(); }
+
 module through_holes(hh){ for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d); }
 
 module base_part(){
@@ -96,26 +104,23 @@ module base_part(){
         through_holes(base_h);
     }
 }
-
-module relief_part(){
+module support_part(){
     difference(){
-        translate([0,0,relief_start])
-            linear_extrude(height=relief_h,convexity=20) silver_details2d();
-        through_holes(relief_start+relief_h);
+        translate([0,0,base_h]) linear_extrude(height=support_h,convexity=20) support_core2d();
+        through_holes(base_h+support_h);
     }
 }
-
-module layerstep_part(){
-    // Intentionally disconnected shells in ONE object.
-    // There is no model geometry between Z=2.00 and Z=2.19.
-    union(){
-        base_part();
-        relief_part();
+module visible_relief_part(){
+    difference(){
+        translate([0,0,relief_main_z]) linear_extrude(height=relief_main_h,convexity=20) details2d();
+        through_holes(3.0);
     }
 }
+module relief_component(){ union(){ support_part(); visible_relief_part(); } }
 
-part="layerstep"; // layerstep | combined | base | black | relief | silver | preview
-if(part=="layerstep" || part=="combined") layerstep_part();
-else if(part=="base" || part=="black") base_part();
-else if(part=="relief" || part=="silver") relief_part();
-else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_part(); }
+part="preview"; // base | support | reliefmain | relief | preview
+if(part=="base") base_part();
+else if(part=="support") support_part();
+else if(part=="reliefmain") visible_relief_part();
+else if(part=="relief") relief_component();
+else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_component(); }
