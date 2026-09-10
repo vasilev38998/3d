@@ -1,25 +1,17 @@
 $fn=128;
 
-// Муравей / Lifan KP230 — OUTLINE SUPPORT v8
-// Exact CAD workaround for raised-detail top-surface artifacts in Bambu Studio.
-// Tuned for fixed 0.20 mm layers and a 0.4 mm nozzle.
-//
-// BASE:           Z=0.00..2.00 mm
-// HIDDEN OUTLINE: Z=2.00..2.10 mm, 0.38 mm wide ring around each detail
-// FULL RELIEF:    Z=2.10..3.00 mm
-//
-// The hidden outline is intentionally less than one print layer high, so
-// Classic wall generation should not create a standalone 0.10 mm layer. It
-// merely gives the first full relief layer a connected footprint while the
-// base keeps a continuous top surface.
+// Муравей / Lifan KP230 — SOLID100 v9
+// One single manifold model. No separate bodies, no gaps, no hidden support.
+// The relief overlaps the base internally by 0.01 mm before CGAL union so the
+// exported STL has one continuous solid without a coincident interface plane.
+// Recommended slicing profile is fixed 0.20 mm, 100% infill, bottom shell
+// thickness 2.00 mm / 10 layers, top shell layers 0, Classic wall generator.
 
 W=160;
 center_r=28.5;
 base_h=2.00;
-outline_h=0.10;
-outline_width=0.38;
-relief_main_z=base_h+outline_h;
-relief_main_h=0.90;
+relief_h=1.00;
+join_overlap=0.01;
 hole_d=4.6;
 hole_x=73.8;
 ring_od=9.2;
@@ -70,39 +62,20 @@ module left_text2d(){ translate([-49.5,-0.2]) scale([0.47,1]) offset(delta=0.12)
 module right_text2d(){ translate([48.8,-0.25]) scale([0.42,1]) offset(delta=0.18) text("Lifan KP230",size=11.7,font=font_right,halign="center",valign="center",spacing=0.92); }
 module hole_rings2d(){ for(x=[-hole_x,hole_x]) translate([x,0]) difference(){ circle(d=ring_od); circle(d=hole_d+1.10); } }
 module details2d(){ union(){ frame2d(); gear2d(); ant2d(); stripe_pair(-1); stripe_pair(1); left_text2d(); right_text2d(); hole_rings2d(); } }
-
-// IMPORTANT: this is a THIN PERIMETER RING, not an inset filled core.
-module hidden_outline2d(){
-    difference(){
-        details2d();
-        offset(delta=-outline_width) details2d();
-    }
-}
-
 module through_holes(hh){ for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d); }
-module base_part(){
-    difference(){
-        linear_extrude(height=base_h,convexity=10) plaque2d();
-        through_holes(base_h);
-    }
-}
-module outline_part(){
-    difference(){
-        translate([0,0,base_h]) linear_extrude(height=outline_h,convexity=20) hidden_outline2d();
-        through_holes(base_h+outline_h);
-    }
-}
-module relief_main_part(){
-    difference(){
-        translate([0,0,relief_main_z]) linear_extrude(height=relief_main_h,convexity=20) details2d();
-        through_holes(3.0);
-    }
-}
-module relief_component(){ union(){ outline_part(); relief_main_part(); } }
 
-part="preview"; // base | outline | reliefmain | relief | preview
-if(part=="base") base_part();
-else if(part=="outline") outline_part();
-else if(part=="reliefmain") relief_main_part();
-else if(part=="relief") relief_component();
-else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_component(); }
+module single_solid(){
+    render(convexity=30)
+    difference(){
+        union(){
+            linear_extrude(height=base_h,convexity=10) plaque2d();
+            translate([0,0,base_h-join_overlap])
+                linear_extrude(height=relief_h+join_overlap,convexity=20) details2d();
+        }
+        through_holes(base_h+relief_h);
+    }
+}
+
+part="solid100"; // solid100 | preview
+if(part=="solid100") single_solid();
+else if(part=="preview") color([0.25,0.25,0.25]) single_solid();
