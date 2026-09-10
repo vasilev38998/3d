@@ -23,20 +23,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openscad fonts-dejavu-core
 
-      - name: Build only required v8 bodies
+      - name: Build single solid v9 STL
         working-directory: muravey-lifan-kp230
         run: |
-          openscad -o muravey_lifan_kp230_BASE_v8.stl -D 'part="base"' muravey_lifan_kp230.scad
-          openscad -o muravey_lifan_kp230_RELIEF_v8.stl -D 'part="relief"' muravey_lifan_kp230.scad
-          test -s muravey_lifan_kp230_BASE_v8.stl
-          test -s muravey_lifan_kp230_RELIEF_v8.stl
+          openscad -o muravey_lifan_kp230_SOLID100_v9.stl -D 'part="solid100"' muravey_lifan_kp230.scad
+          test -s muravey_lifan_kp230_SOLID100_v9.stl
 
-      - name: Validate and package Bambu v8 project
+      - name: Validate and package 100 percent infill 3MF
         run: |
           python3 - <<'PY'
           import json, zipfile
           from pathlib import Path
           import xml.etree.ElementTree as ET
+
           CORE='http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
           ET.register_namespace('',CORE)
 
@@ -49,81 +48,89 @@ jobs:
                       if xyz not in index:
                           index[xyz]=len(verts); verts.append(xyz)
                       tri.append(index[xyz])
-                      if len(tri)==3: tris.append(tuple(tri)); tri=[]
+                      if len(tri)==3:
+                          tris.append(tuple(tri)); tri=[]
               if not tris: raise RuntimeError(path)
               return verts,tris,(min(zs),max(zs))
 
           root=Path('muravey-lifan-kp230')
-          base_v,base_t,bz=read_stl(root/'muravey_lifan_kp230_BASE_v8.stl')
-          rel_v,rel_t,rz=read_stl(root/'muravey_lifan_kp230_RELIEF_v8.stl')
-          print('BASE Z',bz,'RELIEF Z',rz)
-          assert abs(bz[0])<1e-6 and abs(bz[1]-2.0)<1e-6
-          assert abs(rz[0]-2.0)<1e-6 and abs(rz[1]-3.0)<1e-6
+          verts,tris,zr=read_stl(root/'muravey_lifan_kp230_SOLID100_v9.stl')
+          print('MODEL Z RANGE',zr)
+          assert abs(zr[0]-0.0)<1e-6
+          assert abs(zr[1]-3.0)<1e-6
 
           model=ET.Element(f'{{{CORE}}}model',{'unit':'millimeter','xml:lang':'ru-RU'})
-          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Title'}).text='Muravey Lifan KP230 OUTLINE FIX v8'
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Title'}).text='Muravey Lifan KP230 SOLID100 v9'
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Description'}).text='Single manifold model. Slice at fixed 0.20 mm, 100% infill, 10 bottom layers, 0 top shell layers. Change color after layer 10.'
           resources=ET.SubElement(model,f'{{{CORE}}}resources')
-          mats=ET.SubElement(resources,f'{{{CORE}}}basematerials',{'id':'10'})
-          ET.SubElement(mats,f'{{{CORE}}}base',{'name':'BASE_BLACK','displaycolor':'#181818FF'})
-          ET.SubElement(mats,f'{{{CORE}}}base',{'name':'RELIEF_SILVER','displaycolor':'#C8C8C8FF'})
-
-          def add_obj(oid,name,verts,tris,pindex):
-              obj=ET.SubElement(resources,f'{{{CORE}}}object',{'id':str(oid),'name':name,'type':'model','pid':'10','pindex':str(pindex)})
-              mesh=ET.SubElement(obj,f'{{{CORE}}}mesh')
-              vs=ET.SubElement(mesh,f'{{{CORE}}}vertices')
-              for x,y,z in verts: ET.SubElement(vs,f'{{{CORE}}}vertex',{'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
-              ts=ET.SubElement(mesh,f'{{{CORE}}}triangles')
-              for a,b,c in tris: ET.SubElement(ts,f'{{{CORE}}}triangle',{'v1':str(a),'v2':str(b),'v3':str(c)})
-
-          add_obj(1,'BASE_BLACK',base_v,base_t,0)
-          add_obj(2,'RELIEF_SILVER_OUTLINEFIX',rel_v,rel_t,1)
-          parent=ET.SubElement(resources,f'{{{CORE}}}object',{'id':'3','name':'LIFAN_KP230_OUTLINEFIX_V8','type':'model'})
-          comps=ET.SubElement(parent,f'{{{CORE}}}components')
-          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'1'})
-          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'2'})
+          obj=ET.SubElement(resources,f'{{{CORE}}}object',{'id':'1','name':'LIFAN_KP230_SOLID100_V9','type':'model'})
+          mesh=ET.SubElement(obj,f'{{{CORE}}}mesh')
+          vs=ET.SubElement(mesh,f'{{{CORE}}}vertices')
+          for x,y,z in verts:
+              ET.SubElement(vs,f'{{{CORE}}}vertex',{'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
+          ts=ET.SubElement(mesh,f'{{{CORE}}}triangles')
+          for a,b,c in tris:
+              ET.SubElement(ts,f'{{{CORE}}}triangle',{'v1':str(a),'v2':str(b),'v3':str(c)})
           build=ET.SubElement(model,f'{{{CORE}}}build')
-          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'3'})
+          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'1'})
           model_xml=ET.tostring(model,encoding='utf-8',xml_declaration=True)
 
           config=ET.Element('config')
-          objcfg=ET.SubElement(config,'object',{'id':'3'})
-          ET.SubElement(objcfg,'metadata',{'key':'name','value':'LIFAN_KP230_OUTLINEFIX_V8'})
-          p1=ET.SubElement(objcfg,'part',{'id':'1','subtype':'normal_part'})
-          ET.SubElement(p1,'metadata',{'key':'name','value':'BASE_BLACK'})
-          ET.SubElement(p1,'metadata',{'key':'extruder','value':'1'})
-          p2=ET.SubElement(objcfg,'part',{'id':'2','subtype':'normal_part'})
-          ET.SubElement(p2,'metadata',{'key':'name','value':'RELIEF_SILVER'})
-          ET.SubElement(p2,'metadata',{'key':'extruder','value':'2'})
+          objcfg=ET.SubElement(config,'object',{'id':'1'})
+          ET.SubElement(objcfg,'metadata',{'key':'name','value':'LIFAN_KP230_SOLID100_V9'})
+          part=ET.SubElement(objcfg,'part',{'id':'1','subtype':'normal_part'})
+          ET.SubElement(part,'metadata',{'key':'name','value':'SOLID100_SINGLE_MESH'})
+          ET.SubElement(part,'metadata',{'key':'extruder','value':'1'})
           plate=ET.SubElement(config,'plate')
-          for k,v in [('plater_id','1'),('plater_name','Lifan KP230 v8'),('locked','false'),('filament_map_mode','Auto For Flush'),('filament_maps','1 2'),('filament_volume_maps','1 1')]:
-              ET.SubElement(plate,'metadata',{'key':k,'value':v})
+          ET.SubElement(plate,'metadata',{'key':'plater_id','value':'1'})
+          ET.SubElement(plate,'metadata',{'key':'plater_name','value':'Lifan KP230 SOLID100 v9'})
           model_settings=ET.tostring(config,encoding='utf-8',xml_declaration=True)
 
-          project_settings=json.dumps({'layer_height':'0.20','initial_layer_print_height':'0.20','wall_generator':'classic','filament_colour':['#181818','#C8C8C8'],'filament_multi_colour':['#181818','#C8C8C8'],'filament_type':['PLA','PLA'],'filament_vendor':['Generic','Generic'],'filament_settings_id':['Generic PLA','Generic PLA'],'filament_diameter':['1.75','1.75'],'single_extruder_multi_material':'1'},indent=2).encode()
+          project_settings=json.dumps({
+              'layer_height':'0.20',
+              'initial_layer_print_height':'0.20',
+              'wall_generator':'classic',
+              'sparse_infill_density':'100%',
+              'sparse_infill_pattern':'rectilinear',
+              'internal_solid_infill_pattern':'rectilinear',
+              'bottom_shell_layers':'10',
+              'bottom_shell_thickness':'2.00',
+              'top_shell_layers':'0',
+              'top_shell_thickness':'0',
+              'filament_colour':['#181818'],
+              'filament_type':['PLA'],
+              'filament_vendor':['Generic'],
+              'filament_settings_id':['Generic PLA'],
+              'filament_diameter':['1.75']
+          },indent=2).encode('utf-8')
+
           rels=b'<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'
           types=b'<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="config" ContentType="application/octet-stream"/></Types>'
-          out=root/'muravey_lifan_kp230_OUTLINEFIX020_v8.3mf'
+          out=root/'muravey_lifan_kp230_SOLID100_v9.3mf'
           with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
-              z.writestr('[Content_Types].xml',types); z.writestr('_rels/.rels',rels); z.writestr('3D/3dmodel.model',model_xml); z.writestr('Metadata/model_settings.config',model_settings); z.writestr('Metadata/project_settings.config',project_settings)
+              z.writestr('[Content_Types].xml',types)
+              z.writestr('_rels/.rels',rels)
+              z.writestr('3D/3dmodel.model',model_xml)
+              z.writestr('Metadata/model_settings.config',model_settings)
+              z.writestr('Metadata/project_settings.config',project_settings)
           assert out.stat().st_size>1000
           PY
 
-      - name: Commit v8 files
+      - name: Commit v9 files
         run: |
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p /tmp/lifan-v8
-          cp muravey-lifan-kp230/muravey_lifan_kp230_BASE_v8.stl /tmp/lifan-v8/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v8.stl /tmp/lifan-v8/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_OUTLINEFIX020_v8.3mf /tmp/lifan-v8/
+          mkdir -p /tmp/lifan-v9
+          cp muravey-lifan-kp230/muravey_lifan_kp230_SOLID100_v9.stl /tmp/lifan-v9/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_SOLID100_v9.3mf /tmp/lifan-v9/
           for attempt in 1 2 3 4; do
             git fetch origin main
             git reset --hard origin/main
-            cp /tmp/lifan-v8/* muravey-lifan-kp230/
-            git add muravey-lifan-kp230/muravey_lifan_kp230_BASE_v8.stl muravey-lifan-kp230/muravey_lifan_kp230_RELIEF_v8.stl muravey-lifan-kp230/muravey_lifan_kp230_OUTLINEFIX020_v8.3mf
+            cp /tmp/lifan-v9/* muravey-lifan-kp230/
+            git add muravey-lifan-kp230/muravey_lifan_kp230_SOLID100_v9.stl muravey-lifan-kp230/muravey_lifan_kp230_SOLID100_v9.3mf
             if git diff --cached --quiet; then exit 0; fi
-            git commit -m "Build Lifan KP230 outline-fix v8"
+            git commit -m "Build Lifan KP230 SOLID100 v9"
             if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
