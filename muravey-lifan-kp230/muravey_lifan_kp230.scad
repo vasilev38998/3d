@@ -1,17 +1,17 @@
 $fn=128;
 
-// Муравей / Lifan KP230 — SOLID100 v9
-// One single manifold model. No separate bodies, no gaps, no hidden support.
-// The relief overlaps the base internally by 0.01 mm before CGAL union so the
-// exported STL has one continuous solid without a coincident interface plane.
-// Recommended slicing profile is fixed 0.20 mm, 100% infill, bottom shell
-// thickness 2.00 mm / 10 layers, top shell layers 0, Classic wall generator.
+// Муравей / Lifan KP230 — INTERFACE SHELLS v10
+// Clean two-volume geometry for Bambu Studio's native Interface Shells feature.
+// BASE   : Z = 0.00 .. 2.00 mm
+// RELIEF : Z = 2.00 .. 3.00 mm
+// No overlap, no air gap, no hidden support, no half-layer tricks.
+// The v10 3MF enables interface_shells so Bambu generates a complete solid
+// material interface while keeping the raised details physically connected.
 
 W=160;
 center_r=28.5;
 base_h=2.00;
 relief_h=1.00;
-join_overlap=0.01;
 hole_d=4.6;
 hole_x=73.8;
 ring_od=9.2;
@@ -37,6 +37,7 @@ module gear2d(){
         circle(r=18.25);
     }
 }
+
 module ant2d(){
     difference(){
         union(){
@@ -57,25 +58,49 @@ module ant2d(){
         translate([5,3.7]) circle(d=1.35);
     }
 }
-module stripe_pair(side=1){ x1=32*side; x2=68.5*side; for(y=[12.2,14.55,-12.2,-14.55]) capsule([x1,y],[x2,y],1.05); }
-module left_text2d(){ translate([-49.5,-0.2]) scale([0.47,1]) offset(delta=0.12) text("МУРАВЕЙ",size=12.6,font=font_main,halign="center",valign="center",spacing=0.96); }
-module right_text2d(){ translate([48.8,-0.25]) scale([0.42,1]) offset(delta=0.18) text("Lifan KP230",size=11.7,font=font_right,halign="center",valign="center",spacing=0.92); }
-module hole_rings2d(){ for(x=[-hole_x,hole_x]) translate([x,0]) difference(){ circle(d=ring_od); circle(d=hole_d+1.10); } }
-module details2d(){ union(){ frame2d(); gear2d(); ant2d(); stripe_pair(-1); stripe_pair(1); left_text2d(); right_text2d(); hole_rings2d(); } }
-module through_holes(hh){ for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d); }
 
-module single_solid(){
-    render(convexity=30)
+module stripe_pair(side=1){
+    x1=32*side; x2=68.5*side;
+    for(y=[12.2,14.55,-12.2,-14.55]) capsule([x1,y],[x2,y],1.05);
+}
+module left_text2d(){
+    translate([-49.5,-0.2]) scale([0.47,1]) offset(delta=0.12)
+        text("МУРАВЕЙ",size=12.6,font=font_main,halign="center",valign="center",spacing=0.96);
+}
+module right_text2d(){
+    translate([48.8,-0.25]) scale([0.42,1]) offset(delta=0.18)
+        text("Lifan KP230",size=11.7,font=font_right,halign="center",valign="center",spacing=0.92);
+}
+module hole_rings2d(){
+    for(x=[-hole_x,hole_x]) translate([x,0]) difference(){ circle(d=ring_od); circle(d=hole_d+1.10); }
+}
+module details2d(){
+    union(){ frame2d(); gear2d(); ant2d(); stripe_pair(-1); stripe_pair(1); left_text2d(); right_text2d(); hole_rings2d(); }
+}
+module through_holes(hh){
+    for(x=[-hole_x,hole_x]) translate([x,0,-0.2]) cylinder(h=hh+0.4,d=hole_d);
+}
+
+module base_part(){
     difference(){
-        union(){
-            linear_extrude(height=base_h,convexity=10) plaque2d();
-            translate([0,0,base_h-join_overlap])
-                linear_extrude(height=relief_h+join_overlap,convexity=20) details2d();
-        }
+        linear_extrude(height=base_h,convexity=10) plaque2d();
+        through_holes(base_h);
+    }
+}
+
+module relief_part(){
+    difference(){
+        translate([0,0,base_h]) linear_extrude(height=relief_h,convexity=20) details2d();
         through_holes(base_h+relief_h);
     }
 }
 
-part="solid100"; // solid100 | preview
-if(part=="solid100") single_solid();
-else if(part=="preview") color([0.25,0.25,0.25]) single_solid();
+module combined_preview(){
+    union(){ base_part(); relief_part(); }
+}
+
+part="preview"; // base | relief | combined | preview
+if(part=="base") base_part();
+else if(part=="relief") relief_part();
+else if(part=="combined") combined_preview();
+else if(part=="preview") { color([0.04,0.04,0.04]) base_part(); color([0.75,0.76,0.78]) relief_part(); }
