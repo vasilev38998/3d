@@ -23,43 +23,45 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openscad xvfb fonts-dejavu-core
 
-      - name: Build 0.20-layer-step model
+      - name: Build surface-fix geometry
         working-directory: muravey-lifan-kp230
         run: |
-          openscad -o muravey_lifan_kp230_layerstep020_v5.stl -D 'part="layerstep"' muravey_lifan_kp230.scad
-          openscad -o muravey_lifan_kp230_base_v5.stl -D 'part="base"' muravey_lifan_kp230.scad
-          openscad -o muravey_lifan_kp230_relief_v5.stl -D 'part="relief"' muravey_lifan_kp230.scad
-          xvfb-run -a openscad -o muravey_lifan_kp230_preview.png --imgsize=1800,700 --projection=ortho --camera=0,0,0,0,0,0,190 -D 'part="preview"' muravey_lifan_kp230.scad
-          test -s muravey_lifan_kp230_layerstep020_v5.stl
+          openscad -o muravey_lifan_kp230_base_v6.stl -D 'part="base"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_supportcore_v6.stl -D 'part="support"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_reliefmain_v6.stl -D 'part="reliefmain"' muravey_lifan_kp230.scad
+          openscad -o muravey_lifan_kp230_relief_v6.stl -D 'part="relief"' muravey_lifan_kp230.scad
+          xvfb-run -a openscad -o muravey_lifan_kp230_surfacefix_v6_preview.png --imgsize=1800,700 --projection=ortho --camera=0,0,0,0,0,0,190 -D 'part="preview"' muravey_lifan_kp230.scad
+          test -s muravey_lifan_kp230_base_v6.stl
+          test -s muravey_lifan_kp230_supportcore_v6.stl
+          test -s muravey_lifan_kp230_reliefmain_v6.stl
+          test -s muravey_lifan_kp230_relief_v6.stl
 
-      - name: Validate geometry separation
+      - name: Validate Z ranges
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           def zr(path):
               zs=[]
               for line in Path(path).read_text(errors='ignore').splitlines():
                   s=line.strip()
-                  if s.startswith('vertex '):
-                      zs.append(float(s.split()[3]))
-              if not zs:
-                  raise RuntimeError(f'No vertices in {path}')
-              return min(zs), max(zs)
-
-          bmin,bmax=zr('muravey-lifan-kp230/muravey_lifan_kp230_base_v5.stl')
-          rmin,rmax=zr('muravey-lifan-kp230/muravey_lifan_kp230_relief_v5.stl')
-          print(f'BASE   Z={bmin:.3f}..{bmax:.3f}')
-          print(f'RELIEF Z={rmin:.3f}..{rmax:.3f}')
-          print(f'GAP={rmin-bmax:.3f} mm')
-          assert abs(bmin-0.0) < 1e-6
-          assert abs(bmax-2.0) < 1e-6
-          assert abs(rmin-2.19) < 1e-6
-          assert abs(rmax-3.19) < 1e-6
-          assert rmin > 2.0
+                  if s.startswith('vertex '): zs.append(float(s.split()[3]))
+              if not zs: raise RuntimeError(f'No vertices in {path}')
+              return min(zs),max(zs)
+          root=Path('muravey-lifan-kp230')
+          ranges={
+              'base':zr(root/'muravey_lifan_kp230_base_v6.stl'),
+              'support':zr(root/'muravey_lifan_kp230_supportcore_v6.stl'),
+              'reliefmain':zr(root/'muravey_lifan_kp230_reliefmain_v6.stl'),
+              'relief':zr(root/'muravey_lifan_kp230_relief_v6.stl'),
+          }
+          for k,v in ranges.items(): print(k,v)
+          assert abs(ranges['base'][0]-0.0)<1e-6 and abs(ranges['base'][1]-2.0)<1e-6
+          assert abs(ranges['support'][0]-2.0)<1e-6 and abs(ranges['support'][1]-2.1)<1e-6
+          assert abs(ranges['reliefmain'][0]-2.1)<1e-6 and abs(ranges['reliefmain'][1]-3.0)<1e-6
+          assert abs(ranges['relief'][0]-2.0)<1e-6 and abs(ranges['relief'][1]-3.0)<1e-6
           PY
 
-      - name: Build one-object 3MF
+      - name: Build two-part Bambu 3MF
         run: |
           python3 - <<'PY'
           import zipfile
@@ -67,7 +69,7 @@ jobs:
           import xml.etree.ElementTree as ET
 
           CORE='http://schemas.microsoft.com/3dmanufacturing/core/2015/02'
-          ET.register_namespace('', CORE)
+          ET.register_namespace('',CORE)
 
           def read_stl(path):
               verts=[]; index={}; tris=[]; tri=[]
@@ -80,37 +82,47 @@ jobs:
                       tri.append(index[xyz])
                       if len(tri)==3:
                           tris.append(tuple(tri)); tri=[]
-              if not tris:
-                  raise RuntimeError(f'No triangles parsed from {path}')
+              if not tris: raise RuntimeError(f'No triangles parsed from {path}')
               return verts,tris
 
-          src=Path('muravey-lifan-kp230/muravey_lifan_kp230_layerstep020_v5.stl')
-          verts,tris=read_stl(src)
-          model=ET.Element(f'{{{CORE}}}model', {'unit':'millimeter','xml:lang':'ru-RU'})
-          ET.SubElement(model, f'{{{CORE}}}metadata', {'name':'Title'}).text='Муравей Lifan KP230 — layerstep 0.20 v5'
-          ET.SubElement(model, f'{{{CORE}}}metadata', {'name':'Description'}).text='Base ends at 2.00 mm; relief starts at 2.19 mm. Use 0.20 mm fixed layer height.'
-          resources=ET.SubElement(model, f'{{{CORE}}}resources')
-          obj=ET.SubElement(resources, f'{{{CORE}}}object', {'id':'1','name':'LIFAN_KP230_LAYERSTEP020_V5','type':'model'})
-          mesh=ET.SubElement(obj, f'{{{CORE}}}mesh')
-          vs=ET.SubElement(mesh, f'{{{CORE}}}vertices')
-          for x,y,z in verts:
-              ET.SubElement(vs, f'{{{CORE}}}vertex', {'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
-          ts=ET.SubElement(mesh, f'{{{CORE}}}triangles')
-          for a,b,c in tris:
-              ET.SubElement(ts, f'{{{CORE}}}triangle', {'v1':str(a),'v2':str(b),'v3':str(c)})
-          build=ET.SubElement(model, f'{{{CORE}}}build')
-          ET.SubElement(build, f'{{{CORE}}}item', {'objectid':'1'})
+          root=Path('muravey-lifan-kp230')
+          model=ET.Element(f'{{{CORE}}}model',{'unit':'millimeter','xml:lang':'ru-RU'})
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Title'}).text='Муравей Lifan KP230 — SURFACEFIX 0.20 v6'
+          ET.SubElement(model,f'{{{CORE}}}metadata',{'name':'Description'}).text='Base 0-2.0 mm; hidden inset support 2.0-2.1 mm; visible relief 2.1-3.0 mm. Fixed 0.20 mm layers; Classic wall generator.'
+          resources=ET.SubElement(model,f'{{{CORE}}}resources')
+          mats=ET.SubElement(resources,f'{{{CORE}}}basematerials',{'id':'10'})
+          ET.SubElement(mats,f'{{{CORE}}}base',{'name':'BASE_BLACK','displaycolor':'#181818FF'})
+          ET.SubElement(mats,f'{{{CORE}}}base',{'name':'RELIEF_SILVER','displaycolor':'#C8C8C8FF'})
 
-          xml=ET.tostring(model, encoding='utf-8', xml_declaration=True)
+          def add_obj(oid,name,path,pindex):
+              verts,tris=read_stl(path)
+              obj=ET.SubElement(resources,f'{{{CORE}}}object',{'id':str(oid),'name':name,'type':'model','pid':'10','pindex':str(pindex)})
+              mesh=ET.SubElement(obj,f'{{{CORE}}}mesh')
+              vs=ET.SubElement(mesh,f'{{{CORE}}}vertices')
+              for x,y,z in verts:
+                  ET.SubElement(vs,f'{{{CORE}}}vertex',{'x':f'{x:.6g}','y':f'{y:.6g}','z':f'{z:.6g}'})
+              ts=ET.SubElement(mesh,f'{{{CORE}}}triangles')
+              for a,b,c in tris:
+                  ET.SubElement(ts,f'{{{CORE}}}triangle',{'v1':str(a),'v2':str(b),'v3':str(c)})
+
+          add_obj(1,'BASE_0_2mm',root/'muravey_lifan_kp230_base_v6.stl',0)
+          add_obj(2,'RELIEF_WITH_HIDDEN_SUPPORT',root/'muravey_lifan_kp230_relief_v6.stl',1)
+          assembly=ET.SubElement(resources,f'{{{CORE}}}object',{'id':'3','name':'LIFAN_KP230_SURFACEFIX020_V6','type':'model'})
+          comps=ET.SubElement(assembly,f'{{{CORE}}}components')
+          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'1'})
+          ET.SubElement(comps,f'{{{CORE}}}component',{'objectid':'2'})
+          build=ET.SubElement(model,f'{{{CORE}}}build')
+          ET.SubElement(build,f'{{{CORE}}}item',{'objectid':'3'})
+
+          xml=ET.tostring(model,encoding='utf-8',xml_declaration=True)
           rels=b'''<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model" Id="rel0"/></Relationships>'''
           types=b'''<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/></Types>'''
-          out=Path('muravey-lifan-kp230/muravey_lifan_kp230_LAYERSTEP020_v5.3mf')
+          out=root/'muravey_lifan_kp230_SURFACEFIX020_v6.3mf'
           with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
               z.writestr('[Content_Types].xml',types)
               z.writestr('_rels/.rels',rels)
               z.writestr('3D/3dmodel.model',xml)
-          if out.stat().st_size < 1000:
-              raise RuntimeError('3MF output unexpectedly small')
+          if out.stat().st_size<1000: raise RuntimeError('3MF unexpectedly small')
           PY
 
       - name: Commit generated files
@@ -118,31 +130,26 @@ jobs:
           set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          mkdir -p /tmp/lifan-v5
-          cp muravey-lifan-kp230/muravey_lifan_kp230_layerstep020_v5.stl /tmp/lifan-v5/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_base_v5.stl /tmp/lifan-v5/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_relief_v5.stl /tmp/lifan-v5/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_LAYERSTEP020_v5.3mf /tmp/lifan-v5/
-          cp muravey-lifan-kp230/muravey_lifan_kp230_preview.png /tmp/lifan-v5/
-
+          mkdir -p /tmp/lifan-v6
+          cp muravey-lifan-kp230/muravey_lifan_kp230_base_v6.stl /tmp/lifan-v6/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_supportcore_v6.stl /tmp/lifan-v6/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_reliefmain_v6.stl /tmp/lifan-v6/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_relief_v6.stl /tmp/lifan-v6/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_SURFACEFIX020_v6.3mf /tmp/lifan-v6/
+          cp muravey-lifan-kp230/muravey_lifan_kp230_surfacefix_v6_preview.png /tmp/lifan-v6/
           for attempt in 1 2 3 4; do
             git fetch origin main
             git reset --hard origin/main
-            cp /tmp/lifan-v5/* muravey-lifan-kp230/
-            git add muravey-lifan-kp230/muravey_lifan_kp230_layerstep020_v5.stl \
-                    muravey-lifan-kp230/muravey_lifan_kp230_base_v5.stl \
-                    muravey-lifan-kp230/muravey_lifan_kp230_relief_v5.stl \
-                    muravey-lifan-kp230/muravey_lifan_kp230_LAYERSTEP020_v5.3mf \
-                    muravey-lifan-kp230/muravey_lifan_kp230_preview.png
-            if git diff --cached --quiet; then
-              echo "Generated files are already current"
-              exit 0
-            fi
-            git commit -m "Build Lifan KP230 layerstep 0.20 v5"
-            if git push origin HEAD:main; then
-              exit 0
-            fi
+            cp /tmp/lifan-v6/* muravey-lifan-kp230/
+            git add muravey-lifan-kp230/muravey_lifan_kp230_base_v6.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_supportcore_v6.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_reliefmain_v6.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_relief_v6.stl \
+                    muravey-lifan-kp230/muravey_lifan_kp230_SURFACEFIX020_v6.3mf \
+                    muravey-lifan-kp230/muravey_lifan_kp230_surfacefix_v6_preview.png
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m "Build Lifan KP230 surface-fix v6"
+            if git push origin HEAD:main; then exit 0; fi
             sleep 3
           done
           exit 1
